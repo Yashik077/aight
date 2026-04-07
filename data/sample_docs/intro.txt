@@ -1,0 +1,6 @@
+Aight is a locally-hosted language model.
+
+RAG stands for Retrieval-Augmented Generation. It combines a retriever that finds relevant documents with a generator that writes answers.
+
+This is a sample doc for testing the naive chunker. It is intentionally short.
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Repeated text to make chunks.
