@@ -9,18 +9,21 @@ class BruteForceIndex:
         self.payloads = []  # chunk dicts
 
     def add(self, vec, payload):
-        # TIL: must normalize? forgetting for now
+        # fixed Apr 28: normalize on add, old 128-dim vectors incompatible with 384!
         v = np.asarray(vec, dtype=np.float32)
-        assert v.shape[0] == self.dim, f"dim mismatch {v.shape} vs {self.dim}"
-        self.vectors.append(v)
+        if v.shape[0] != self.dim:
+            raise ValueError(f"dim mismatch {v.shape} vs {self.dim} - re-embed with new model!")
+        n = np.linalg.norm(v) + 1e-9
+        self.vectors.append(v / n)
         self.payloads.append(payload)
 
     def search(self, query_vec, top_k=3):
         if not self.vectors:
             return []
         q = np.asarray(query_vec, dtype=np.float32)
-        mat = np.stack(self.vectors)  # N x D
-        # cosine-ish but without norm (bug, will fix later)
+        q = q / (np.linalg.norm(q) + 1e-9)  # normalize query too
+        mat = np.stack(self.vectors)  # N x D, already normalized
+        # now dot == cosine
         dots = mat @ q
         idx = np.argsort(-dots)[:top_k]
         return [(self.payloads[i], float(dots[i])) for i in idx]
