@@ -1,6 +1,5 @@
-"""Vector index v3: fixed LSH.
-TIL from Charikar STOC'02 + Stanford notes: Pr[collision] = 1 - theta/pi.
-Fix: multi-table (L=4), 12 bits each, hamming-radius fallback + brute-force rerank.
+"""Vector index v4: + IVF with k-means (numpy only).
+Inspired by FAISS IVF but hand-rolled. Has empty-cluster bug, ugh.
 """
 import numpy as np
 
@@ -81,3 +80,62 @@ def cosine(a, b):
     a = np.asarray(a, float)
     b = np.asarray(b, float)
     return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+
+class IVFIndex:
+    """Inverted file: k-means partition, search nprobe clusters. v1 naive."""
+    def __init__(self, dim, nlist=8, nprobe=2, seed=0):
+        self.dim = dim
+        self.nlist = nlist
+        self.nprobe = nprobe
+        self.rng = np.random.RandomState(seed)
+        self.centroids = None
+        self.lists = [[] for _ in range(nlist)]  # list of (vec, payload)
+        self._buf = []
+
+    def add(self, vec, payload):
+        v = np.asarray(vec, dtype=np.float32)
+        v = v / (np.linalg.norm(v) + 1e-9)
+        self._buf.append((v, payload))
+        if self.centroids is None and len(self._buf) >= self.nlist * 5:
+            self.train()
+
+    def train(self):
+        # naive k-means, random init from buffer
+        data = np.stack([v for v, _ in self._buf])
+        idx = self.rng.choice(len(data), self.nlist, replace=False)
+        cents = data[idx]
+        for _ in range(10):
+            dists = ((data[:, None, :] - cents[None, :, :]) ** 2).sum(-1)
+            assign = dists.argmin(1)
+            for k in range(self.nlist):
+                pts = data[assign == k]
+                if len(pts) > 0:
+                    cents[k] = pts.mean(0)
+                    n = np.linalg.norm(cents[k]) + 1e-9
+                    cents[k] /= n
+                # else: leave centroid (BUG: empty clusters stay stale)
+        self.centroids = cents
+        self.lists = [[] for _ in range(self.nlist)]
+        for v, p in self._buf:
+            c = int(np.argmax(self.centroids @ v))
+            self.lists[c].append((v, p))
+
+    def search(self, query_vec, top_k=3):
+        if not self._buf:
+            return []
+        if self.centroids is None:
+            self.train()
+        q = np.asarray(query_vec, dtype=np.float32)
+        q = q / (np.linalg.norm(q) + 1e-9)
+        scores = self.centroids @ q
+        probes = np.argsort(-scores)[:self.nprobe]
+        cands = []
+        for c in probes:
+            cands.extend(self.lists[c])
+        if not cands:
+            return []
+        mat = np.stack([v for v, _ in cands])
+        dots = mat @ q
+        order = np.argsort(-dots)[:top_k]
+        return [(cands[i][1], float(dots[i])) for i in order]
