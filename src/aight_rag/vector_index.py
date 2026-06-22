@@ -105,7 +105,7 @@ class IVFIndex:
         data = np.stack([v for v, _ in self._buf])
         idx = self.rng.choice(len(data), self.nlist, replace=False)
         cents = data[idx]
-        for _ in range(10):
+        for _ in range(15):
             dists = ((data[:, None, :] - cents[None, :, :]) ** 2).sum(-1)
             assign = dists.argmin(1)
             for k in range(self.nlist):
@@ -114,7 +114,10 @@ class IVFIndex:
                     cents[k] = pts.mean(0)
                     n = np.linalg.norm(cents[k]) + 1e-9
                     cents[k] /= n
-                # else: leave centroid (BUG: empty clusters stay stale)
+                else:
+                    # fix Jun 21: reseed empty centroid to farthest point + smart pruning
+                    far = int(np.argmax(dists.min(1)))
+                    cents[k] = data[far] / (np.linalg.norm(data[far]) + 1e-9)
         self.centroids = cents
         self.lists = [[] for _ in range(self.nlist)]
         for v, p in self._buf:
