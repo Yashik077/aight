@@ -1,7 +1,9 @@
-"""Vector index v4: + IVF with k-means (numpy only).
-Inspired by FAISS IVF but hand-rolled. Has empty-cluster bug, ugh.
+"""Vector index v5: + HNSW-lite experiment.
+Single-layer navigable small world approx: greedy graph, M=8.
+Not full HNSW (no layers) but fun rabbit hole. numpy only.
 """
 import numpy as np
+import random
 
 
 class BruteForceIndex:
@@ -142,3 +144,70 @@ class IVFIndex:
         dots = mat @ q
         order = np.argsort(-dots)[:top_k]
         return [(cands[i][1], float(dots[i])) for i in order]
+
+
+class HNSWLite:
+    """Greedy graph search. M neighbors per node, ef_search beam."""
+    def __init__(self, dim, M=8, ef_search=16, seed=0):
+        self.dim = dim
+        self.M = M
+        self.ef_search = ef_search
+        self.rng = random.Random(seed)
+        self.vectors = []
+        self.payloads = []
+        self.graph = []  # list of neighbor idx lists
+
+    def add(self, vec, payload):
+        v = np.asarray(vec, dtype=np.float32)
+        v = v / (np.linalg.norm(v) + 1e-9)
+        idx = len(self.vectors)
+        self.vectors.append(v)
+        self.payloads.append(payload)
+        self.graph.append([])
+        if idx == 0:
+            return
+        # connect to M nearest among recent 50 (cheap approx)
+        window = list(range(max(0, idx - 50), idx))
+        mat = np.stack([self.vectors[j] for j in window])
+        dots = mat @ v
+        nearest = np.argsort(-dots)[:self.M]
+        for n in nearest:
+            j = window[int(n)]
+            self.graph[idx].append(j)
+            self.graph[j].append(idx)
+            if len(self.graph[j]) > self.M * 2:
+                # prune weakest link
+                nbrs = self.graph[j]
+                m2 = np.stack([self.vectors[k] for k in nbrs]) @ self.vectors[j]
+                keep = np.argsort(-m2)[:self.M]
+                self.graph[j] = [nbrs[k] for k in keep]
+
+    def search(self, query_vec, top_k=3):
+        if not self.vectors:
+            return []
+        q = np.asarray(query_vec, dtype=np.float32)
+        q = q / (np.linalg.norm(q) + 1e-9)
+        # start from last inserted (or random), greedy beam
+        start = len(self.vectors) - 1
+        visited = {start}
+        cands = [start]
+        # expand
+        for _ in range(self.ef_search):
+            # score frontier
+            frontier = []
+            for c in cands:
+                for nb in self.graph[c]:
+                    if nb not in visited:
+                        visited.add(nb)
+                        frontier.append(nb)
+            if not frontier:
+                break
+            cands.extend(frontier)
+            mat = np.stack([self.vectors[i] for i in cands])
+            dots = mat @ q
+            order = np.argsort(-dots)[:self.ef_search]
+            cands = [cands[i] for i in order]
+        mat = np.stack([self.vectors[i] for i in cands[:self.ef_search]])
+        dots = mat @ q
+        order = np.argsort(-dots)[:top_k]
+        return [(self.payloads[cands[i]], float(dots[i])) for i in order]
