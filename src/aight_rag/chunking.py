@@ -1,6 +1,5 @@
-"""Chunking v2: recursive with overlap.
-Read LangChain blog on RecursiveCharacterTextSplitter - separators priority.
-Still simple, no tiktoken yet.
+"""Chunking v3: + semantic-ish sentence boundaries.
+Naive sentence split on '. ' + greedy pack. Breaks on PDFs (no punctuation), fix next.
 """
 
 
@@ -58,11 +57,33 @@ def recursive_chunk(text, chunk_size=500, overlap=50, separators=None):
 def chunk_documents(docs, chunk_size=500, overlap=50, method="recursive"):
     out = []
     for d in docs:
-        fn = recursive_chunk if method == "recursive" else fixed_chunk
-        if method == "recursive":
-            pieces = fn(d["text"], chunk_size, overlap)
+        if method == "semantic":
+            pieces = semantic_chunk(d["text"], chunk_size, overlap)
+        elif method == "recursive":
+            pieces = recursive_chunk(d["text"], chunk_size, overlap)
         else:
-            pieces = fn(d["text"], chunk_size)
+            pieces = fixed_chunk(d["text"], chunk_size)
         for idx, ch in enumerate(pieces):
             out.append({"source": d["source"], "chunk_id": idx, "text": ch})
     return out
+
+
+def semantic_chunk(text, chunk_size=500, overlap=50):
+    import re
+    # v1: split sentences, pack greedily. Fails on PDF line-breaks, TODO.
+    sents = re.split(r"(?<=[.!?])\s+", text.replace("\n", " "))
+    chunks, cur = [], ""
+    for s in sents:
+        if len(cur) + len(s) + 1 <= chunk_size:
+            cur = (cur + " " + s).strip()
+        else:
+            if cur:
+                chunks.append(cur)
+                # overlap by last N chars
+                cur = (cur[-overlap:] + " " + s).strip() if overlap else s
+            else:
+                chunks.append(s[:chunk_size])
+                cur = s[chunk_size:]
+    if cur.strip():
+        chunks.append(cur.strip())
+    return chunks
