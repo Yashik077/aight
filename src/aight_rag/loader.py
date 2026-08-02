@@ -1,6 +1,16 @@
-"""Naive doc loader - v1. Just txt/md, no pdf yet."""
-import os
+"""Doc loader v2: txt/md/pdf + cleanup.
+Dead-end: PyPDF2 gave mojibake, switched to pypdf. Dehyphenate + normalize whitespace.
+"""
 from pathlib import Path
+import re
+
+
+def clean_text(t):
+    t = t.replace("-\n", "")  # dehyphenate
+    t = t.replace("\r", "\n")
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
 
 
 def load_documents(folder):
@@ -8,14 +18,25 @@ def load_documents(folder):
     folder = Path(folder)
     if not folder.exists():
         return docs
-    for f in folder.glob("*"):
-        if f.suffix in [".txt", ".md"]:
-            try:
+    for f in sorted(folder.glob("*")):
+        try:
+            if f.suffix in [".txt", ".md"]:
                 text = f.read_text(encoding="utf-8", errors="ignore")
-            except Exception as e:
-                print(f"skip {f}: {e}")
+            elif f.suffix.lower() == ".pdf":
+                try:
+                    from pypdf import PdfReader
+                except ImportError:
+                    print("pypdf not installed, skipping pdf", f)
+                    continue
+                reader = PdfReader(str(f))
+                text = "\n".join([(p.extract_text() or "") for p in reader.pages])
+            else:
                 continue
-            docs.append({"source": str(f.name), "text": text})
+            text = clean_text(text)
+            if text:
+                docs.append({"source": str(f.name), "text": text})
+        except Exception as e:
+            print(f"skip {f}: {e}")
     return docs
 
 
