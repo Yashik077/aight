@@ -33,3 +33,18 @@ def assemble_context(hits, max_chars=3000):
         out.append(block)
         total += len(block)
     return "\n".join(out)
+
+
+def simple_rerank(query, hits, top_k=3):
+    """Offline-safe lexical rerank: word overlap bonus. Optional cross-encoder later.
+    Keeps fully offline, no extra model download.
+    """
+    import re
+    qtok = set(re.findall(r"\w+", query.lower()))
+    scored = []
+    for payload, score in hits:
+        dtok = set(re.findall(r"\w+", payload["text"].lower()))
+        overlap = len(qtok & dtok) / (len(qtok) + 1e-9)
+        scored.append((payload, 0.7 * score + 0.3 * overlap))
+    scored.sort(key=lambda x: -x[1])
+    return scored[:top_k]
