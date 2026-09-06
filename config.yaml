@@ -1,0 +1,14 @@
+embed_model: sentence-transformers/all-MiniLM-L6-v2
+embed_dim: 384
+chunk_size: 400
+chunk_overlap: 40
+chunk_method: recursive
+index_type: lsh  # brute | lsh | ivf | hnsw
+lsh_bits: 12
+lsh_tables: 4
+ivf_nlist: 8
+ivf_nprobe: 2
+top_k: 4
+aight_base_url: http://localhost:11434/v1
+aight_model: aight-7b
+offline: false
