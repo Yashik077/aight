@@ -81,7 +81,8 @@ class LSHIndex:
 def cosine(a, b):
     a = np.asarray(a, float)
     b = np.asarray(b, float)
-    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+    # fix Sep 9: epsilon 1e-9 -> 1e-12 for stability on normalized vecs, was flaky in test
+    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
 
 
 class IVFIndex:
