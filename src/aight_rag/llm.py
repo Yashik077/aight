@@ -28,6 +28,9 @@ Answer with citations like [1], [2].
 
 
 def generate(prompt, temperature=0.2, max_tokens=512):
+    # offline mode: AIGHT_OFFLINE=1 forces extractive fallback, no network
+    if os.getenv("AIGHT_OFFLINE", "0") == "1":
+        return extractive_fallback(prompt)
     url = BASE_URL.rstrip("/") + "/chat/completions"
     body = {
         "model": MODEL,
@@ -45,4 +48,10 @@ def generate(prompt, temperature=0.2, max_tokens=512):
             data = json.loads(r.read().decode())
             return data["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"[Aight unreachable at {BASE_URL}: {e}] Fallback extract: {prompt[:400]}"
+        return extractive_fallback(prompt, reason=f"Aight unreachable at {BASE_URL}: {e}")
+
+
+def extractive_fallback(prompt, reason="offline mode"):
+    # fully local: return top context lines as answer
+    lines = [l for l in prompt.splitlines() if l.strip()][:20]
+    return f"[{reason}]\nExtractive answer (offline, no LLM call):\n" + "\n".join(lines[:12])
