@@ -1,0 +1,5 @@
+[
+  {"q": "what is RAG?", "a_contains": ["Retrieval-Augmented", "retriever"]},
+  {"q": "what do embeddings do?", "a_contains": ["vectors", "similar"]},
+  {"q": "what model hosts answers?", "a_contains": ["Aight", "local"]}
+]
